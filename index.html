@@ -63,6 +63,11 @@ table{width:100%;border-collapse:collapse}td,th{padding:6px 4px;border-bottom:1p
 #toast{position:fixed;inset-inline:16px;bottom:calc(76px + env(safe-area-inset-bottom,0));max-width:420px;margin-inline:auto;background:var(--ink);color:var(--bg);border-radius:10px;padding:10px 14px;text-align:center;opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
 #toast.on{opacity:1}
 body.focus #nav,body.focus .hf{display:none}
+.av{width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--st);flex:none}
+.who{display:flex;gap:12px;align-items:center}.who .mid small{margin-bottom:4px}
+.pb{height:10px;background:var(--ln);border-radius:99px;overflow:hidden}.pb i{display:block;height:100%;background:var(--ok)}
+@media print{:root,:root[data-theme]{--bg:#fff !important;--sf:#fff !important;--ink:#000 !important;--mut:#444 !important;--ln:#999 !important}
+ body{padding:0}#nav,.np,#toast,#unl{display:none !important}.card{break-inside:avoid}}
 .note{color:var(--mut);font-size:.88rem}
 @media(prefers-reduced-motion:reduce){.rf,#toast{transition:none}}
 </style>
@@ -80,8 +85,8 @@ const TYPES=['عام','مذاكرة','ذكر','صلاة'];
 const CATS=['أذكار الصباح','أذكار المساء','أذكار بعد الصلاة','أذكار قبل النوم','أخرى'];
 const PR=[['Fajr','الفجر'],['Dhuhr','الظهر'],['Asr','العصر'],['Maghrib','المغرب'],['Isha','العشاء']];
 const METHODS=[[5,'الهيئة المصرية'],[4,'أم القرى'],[3,'رابطة العالم الإسلامي'],[2,'أمريكا الشمالية'],[1,'كراتشي'],[8,'الخليج'],[9,'الكويت'],[10,'قطر']];
-let D={tasks:[],days:{},snap:{},alarms:[],pt:null,snz:[],fired:{d:'',k:{}},first:'',
- set:{theme:'auto',ws:0,study:25,brk:5,sound:'bell',vol:.7,dur:10,notif:true,city:'',country:'',method:5,man:{},pa:{},dp:{'عام':3,'مذاكرة':10,'ذكر':2,'صلاة':3}}};
+let D={tasks:[],days:{},snap:{},alarms:[],pt:null,snz:[],fired:{d:'',k:{}},first:'',goals:{},kid:{name:'',photo:''},
+ set:{theme:'auto',ws:0,study:25,brk:5,sound:'bell',vol:.7,dur:10,notif:true,goal:0,city:'',country:'',method:5,man:{},pa:{},dp:{'عام':3,'مذاكرة':10,'ذكر':2,'صلاة':3}}};
 const pad=n=>(n<10?'0':'')+n;
 const dkey=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const today=()=>dkey(new Date());
@@ -111,12 +116,13 @@ function snaps(){const td=today();let k=D.first,i=0;while(k<td&&i<800){if(!D.sna
 function dayTasks(k){return(k<today()&&D.snap[k])?D.snap[k]:liveTasks(k);}
 function rec(k,id){return(D.days[k]&&D.days[k][id])||{};}
 function setRec(k,id,o){D.days[k]=D.days[k]||{};D.days[k][id]=Object.assign({},D.days[k][id],o);save();}
-function earned(t,r){return r.done?Math.min(t.max,Math.max(0,+r.pts||0)):0;}
+function earned(t,r){return +r.pts||0;}
 function summary(k){
   let due=0,got=0,dn=0,best=null;const ts=dayTasks(k);
   ts.forEach(t=>{const r=rec(k,t.id),e=earned(t,r);due+=t.max;got+=e;
-    if(r.done){dn++;const ra=t.max?e/t.max:0;if(!best||ra>best.ra||(ra===best.ra&&e>best.e))best={n:t.name,e,ra};}});
-  return{due,got,lost:due-got,pct:due?Math.round(got/due*1000)/10:0,dn,un:ts.length-dn,best,n:ts.length};
+    if(r.done)dn++;if(e>0&&(!best||e>best.e))best={n:t.name,e};});
+  got=Math.round(got*100)/100;
+  return{due,got,lost:Math.max(0,Math.round((due-got)*100)/100),pct:due?Math.round(got/due*1000)/10:0,dn,un:ts.length-dn,best,n:ts.length};
 }
 function span(mode,off){
   const td=pk(today());
@@ -128,6 +134,15 @@ function ptime(p){const k=today();if(D.pt&&D.pt.id.indexOf(k)===0&&D.pt.t[p])ret
 function typeSum(k,type){let g=0,d=0;dayTasks(k).forEach(t=>{if(t.type===type){d+=t.max;g+=earned(t,rec(k,t.id));}});return{got:g,due:d};}
 function subjTotals(ks){const td=today(),o={};ks.forEach(k=>{if(k<D.first||k>td)return;dayTasks(k).forEach(t=>{if(t.type!=='مذاكرة')return;const x=o[t.name]=o[t.name]||{got:0,due:0};x.due+=t.max;x.got+=earned(t,rec(k,t.id));});});
   return Object.keys(o).map(n=>({n,got:o[n].got,due:o[n].due,pct:o[n].due?Math.round(o[n].got/o[n].due*1000)/10:0})).sort((a,b)=>b.got-a.got);}
+const r2=x=>Math.round(x*100)/100;
+function weekStart(k){return addD(k,-((pk(k).getDay()-D.set.ws+7)%7));}
+function goalFor(ws){return(D.goals&&D.goals[ws]!=null)?D.goals[ws]:(D.set.goal||0);}
+function periodStats(ks){
+  const td=today(),types={};let got=0,due=0,dn=0,n=0,days=0,best=null,worst=null;TYPES.forEach(t=>{types[t]={got:0,due:0};});
+  ks.forEach(k=>{if(k<D.first||k>td)return;const q=summary(k);days++;got+=q.got;due+=q.due;dn+=q.dn;n+=q.n;
+    if(q.due){if(!best||q.got>best.got)best={k,got:q.got};if(!worst||q.got<worst.got)worst={k,got:q.got};}
+    TYPES.forEach(t=>{const x=typeSum(k,t);types[t].got=r2(types[t].got+x.got);types[t].due+=x.due;});});
+  got=r2(got);return{got,due,pct:due?Math.round(got/due*1000)/10:0,days,avg:days?r2(got/days):0,dn,n,best,worst,types};}
 //#CORE_END
 /* ===== الصوت والإشعارات ===== */
 let SWR=null,WL=null,UNL=false,ringT=null,ringK='';const AU={};
@@ -207,17 +222,17 @@ function row(t,k,ex){
   const r=rec(k,t.id),tm=t.prayer?(k===today()?ptime(t.prayer):''):t.time;
   const meta=[tm?(t.end&&!t.prayer?tm+' - '+t.end:tm):'',t.type==='ذكر'&&t.cat?t.cat:'',t.reps?'× '+t.reps:'',t.desc||''].filter(Boolean).map(esc).join(' | ');
   return`<div class="row${r.done?' dn':''}" data-t="${t.id}"><input type="checkbox" class="ck" data-a="tick" ${r.done?'checked':''} aria-label="تم: ${esc(t.name)}"><div class="mid"><b>${esc(t.name)}</b>${meta?`<small>${meta}</small>`:''}</div>
-  <label class="pt"><input type="number" inputmode="decimal" min="0" max="${t.max}" step="0.5" data-a="pts" value="${r.done&&r.pts!=null?r.pts:''}" placeholder="—" ${r.done?'':'disabled'} aria-label="الدرجة المكتسبة"><span>/ ${t.max} ★</span></label>
+  <label class="pt"><input type="number" inputmode="decimal" step="any" data-a="pts" value="${r.pts!=null?r.pts:''}" placeholder="—" aria-label="الدرجة التي أدخلها"><span>/ ${t.max} ★</span></label>
   <button class="ib sm" data-a="edit" aria-label="تعديل">✎</button>${ex?`<div class="ex">${ex}</div>`:''}</div>`;}
 function sumHtml(k){
   const s=summary(k),C=2*Math.PI*42,ss=typeSum(k,'مذاكرة');
   return`<div class="card sum" id="sum"><svg viewBox="0 0 100 100" class="ring" role="img" aria-label="نسبة الإنجاز ${s.pct}%"><circle cx="50" cy="50" r="42" class="rb"/><circle cx="50" cy="50" r="42" class="rf" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-Math.min(100,s.pct)/100)}" transform="rotate(-90 50 50)"/><text x="50" y="57" text-anchor="middle" class="rt">${s.pct}%</text></svg>
-  <div><p><b>${s.got}</b> من ${s.due} ★ (المكتسبة من المستحقة)</p><p>المفقودة: ${s.lost}</p><p>مكتملة: ${s.dn} | غير مكتملة: ${s.un}</p>${ss.due?`<p>نقاط المواد: <b>${ss.got}</b> من ${ss.due}</p>`:''}${s.best?`<p>الأفضل: ${esc(s.best.n)}</p>`:''}</div></div>`;}
+  <div><p>مجموع ما أدخلتِه: <b>${s.got}</b> ★</p><p>المستحقة: ${s.due}</p><p>المفقودة: ${s.lost}</p><p>مكتملة: ${s.dn} | غير مكتملة: ${s.un}</p>${ss.due?`<p>نقاط المواد: <b>${ss.got}</b> من ${ss.due}</p>`:''}${s.best?`<p>أعلى درجة: ${esc(s.best.n)} (${s.best.e})</p>`:''}</div></div>`;}
 function vToday(){
   const k=V.day,isT=k===today(),F=[['all','الكل'],['عام','المهام'],['مذاكرة','المواد'],['صلاة','الصلاة'],['ذكر','الأذكار']];
   const ts=dayTasks(k).filter(t=>V.filter==='all'||t.type===V.filter);
   return`<div class="top"><button class="ib" data-a="day" data-n="-1" aria-label="اليوم السابق">›</button><div class="dt"><b>${fd(k,{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</b><small>${fd(k,{day:'numeric',month:'long',year:'numeric'},'ar-SA-u-ca-islamic-umalqura-nu-latn')}</small></div><button class="ib" data-a="day" data-n="1" ${isT?'disabled':''} aria-label="اليوم التالي">‹</button></div>
-  ${sumHtml(k)}<div class="chips">${F.map(f=>`<button class="chip" data-a="filter" data-v="${f[0]}" aria-pressed="${V.filter===f[0]}">${f[1]}</button>`).join('')}</div>
+  ${kidHtml(k)}${sumHtml(k)}<div class="chips">${F.map(f=>`<button class="chip" data-a="filter" data-v="${f[0]}" aria-pressed="${V.filter===f[0]}">${f[1]}</button>`).join('')}</div>
   ${ts.length?ts.map(t=>row(t,k)).join(''):'<div class="card note">لا مهام هنا. أضف مهمة جديدة.</div>'}
   <button class="btn pri" data-a="edit" data-new="1" style="width:100%">＋ مهمة جديدة</button>`;}
 function vPrayer(){
@@ -248,13 +263,46 @@ function vTimer(){
   <p class="note hf">الصوت والإشعار يعملان والصفحة مفتوحة أو في الخلفية. إن أُغلقت الصفحة أو أوقف النظام المتصفح فقد لا يعمل التنبيه.</p>`;}
 function vEval(){
   const E=V.ev,ks=span(E.mode,E.off),td=today();let tot={due:0,got:0},bk=null,bp=-1;
-  const rows=ks.map(k=>{const on=k>=D.first&&k<=td,s=on?summary(k):null;if(s){tot.due+=s.due;tot.got+=s.got;if(s.due&&s.pct>bp){bp=s.pct;bk=k;}}return{k,s};});
+  const rows=ks.map(k=>{const on=k>=D.first&&k<=td,s=on?summary(k):null;if(s){tot.due+=s.due;tot.got=r2(tot.got+s.got);if(s.got>bp){bp=s.got;bk=k;}}return{k,s};});
   const title=E.mode==='w'?fd(ks[0],{day:'numeric',month:'short'})+' - '+fd(ks[6],{day:'numeric',month:'short',year:'numeric'}):fd(ks[0],{month:'long',year:'numeric'});
   const pct=tot.due?Math.round(tot.got/tot.due*1000)/10:0,sj=subjTotals(ks);
   return`<h2>التقييم</h2><div class="top"><button class="ib" data-a="ev" data-n="-1" aria-label="السابق">›</button><div class="dt"><b>${title}</b><div class="rw c"><button class="chip" data-a="evm" data-v="w" aria-pressed="${E.mode==='w'}">أسبوعي</button><button class="chip" data-a="evm" data-v="m" aria-pressed="${E.mode==='m'}">شهري</button></div></div><button class="ib" data-a="ev" data-n="1" ${E.off>=0?'disabled':''} aria-label="التالي">‹</button></div>
-  <div class="card"><p>المجموع: <b>${tot.got}</b> من ${tot.due} ★ | النسبة <b>${pct}%</b></p><p>${bk?'اليوم الأعلى إنجازاً: '+fd(bk,{weekday:'long',day:'numeric',month:'long'})+' ('+bp+'%)':'لا بيانات بعد.'}</p></div>
+  <div class="card"><p>المجموع: <b>${tot.got}</b> من ${tot.due} ★ | النسبة <b>${pct}%</b></p><p>${bk?'اليوم الأعلى إنجازاً: '+fd(bk,{weekday:'long',day:'numeric',month:'long'})+' ('+bp+' ★)':'لا بيانات بعد.'}</p></div>
+  ${E.mode==='w'?chHtml(ks[0],tot.got):''}<button class="btn np" data-a="report" style="width:100%;margin-bottom:12px">📄 تقرير الطفلة بالأرقام</button>
   <div class="card"><div class="bars" role="img" aria-label="رسم بياني للنسب اليومية">${rows.map(r=>`<div class="bc"><div class="bw"><i class="${r.k===bk?'top':''}" style="height:${r.s?Math.min(100,r.s.pct):0}%"></i></div><small>${E.mode==='w'?fd(r.k,{weekday:'short'}):pk(r.k).getDate()}</small></div>`).join('')}</div>
   <table><tr><th>اليوم</th><th>المكتسبة / المستحقة</th><th>النسبة</th></tr>${rows.map(r=>`<tr><td>${fd(r.k,{weekday:'short',day:'numeric',month:'numeric'})}</td><td>${r.s?r.s.got+' / '+r.s.due:'—'}</td><td>${r.s?r.s.pct+'%':'—'}</td></tr>`).join('')}</table></div>${sj.length?`<div class="card"><b>نقاط كل مادة</b><table><tr><th>المادة</th><th>المكتسبة / المستحقة</th><th>النسبة</th></tr>${sj.map(x=>`<tr><td>${esc(x.n)}</td><td>${x.got} / ${x.due}</td><td>${x.pct}%</td></tr>`).join('')}<tr><td><b>المجموع</b></td><td><b>${sj.reduce((a,x)=>a+x.got,0)} / ${sj.reduce((a,x)=>a+x.due,0)}</b></td><td></td></tr></table></div>`:''}`;}
+const TL={'عام':'المهام','مذاكرة':'المواد','ذكر':'الأذكار','صلاة':'الصلاة'};
+function pTitle(ks,mode){return mode==='w'?fd(ks[0],{day:'numeric',month:'short'})+' - '+fd(ks[6],{day:'numeric',month:'short',year:'numeric'}):fd(ks[0],{month:'long',year:'numeric'});}
+function kidHtml(k){
+  const kd=D.kid||{},ws=weekStart(k),g=goalFor(ws);if(!kd.name&&!kd.photo&&!g)return'';
+  let got=0;for(let i=0;i<7;i++){const d=addD(ws,i);if(d>=D.first&&d<=today())got+=summary(d).got;}got=r2(got);
+  return`<div class="card who" id="kid">${kd.photo?`<img class="av" src="${kd.photo}" alt="">`:''}<div class="mid"><b>${esc(kd.name||'')}</b>${g?`<small>تحدي الأسبوع: ${got} من ${g}</small><div class="pb"><i style="width:${Math.min(100,got/g*100)}%"></i></div>`:''}</div></div>`;}
+function chHtml(ws,got){
+  const g=goalFor(ws),done=g>0&&got>=g;
+  return`<div class="card np"><label class="f">تحدي هذا الأسبوع (رقم النقاط المطلوب)<input type="number" min="0" step="any" data-a="goal" data-ws="${ws}" value="${g||''}" placeholder="مثال: 300"></label>
+  ${g?`<div class="pb" style="margin:8px 0"><i style="width:${Math.min(100,got/g*100)}%"></i></div><p>${done?'🏆 تحقق التحدي! الزيادة: '+r2(got-g):'باقي '+r2(g-got)+' نقطة'} (${got} من ${g})</p>`:'<p class="note">اكتبي رقماً لتظهر نسبة التقدم.</p>'}</div>`;}
+function repData(){
+  const E=V.ev,ks=span(E.mode,E.off),ps=periodStats(ks),pv=periodStats(span(E.mode,E.off-1)),rows=[];
+  rows.push(['مجموع الدرجات',ps.got+' ★'],['الدرجات المستحقة',ps.due],['النسبة',ps.pct+'%'],['الأيام المسجلة',ps.days],['المتوسط اليومي',ps.avg],['المهام المكتملة',ps.dn+' من '+ps.n]);
+  if(ps.best)rows.push(['أعلى يوم',fd(ps.best.k,{weekday:'long',day:'numeric',month:'numeric'})+' ('+ps.best.got+')']);
+  if(ps.worst&&ps.days>1)rows.push(['أقل يوم',fd(ps.worst.k,{weekday:'long',day:'numeric',month:'numeric'})+' ('+ps.worst.got+')']);
+  if(pv.days){const df=r2(ps.got-pv.got);rows.push(['مقارنة بالفترة السابقة',(df>=0?'+':'')+df+' (السابقة '+pv.got+')']);}
+  if(E.mode==='w'){const g=goalFor(ks[0]);if(g){rows.push(['تحدي الأسبوع',g],['نتيجة التحدي',ps.got>=g?'تحقق (زيادة '+r2(ps.got-g)+')':'باقي '+r2(g-ps.got)+' نقطة']);}}
+  return{title:pTitle(ks,E.mode),rows,types:TYPES.filter(t=>ps.types[t].due).map(t=>[TL[t],ps.types[t].got,ps.types[t].due]),subj:subjTotals(ks)};}
+function reportText(){
+  const r=repData(),n=(D.kid&&D.kid.name)||'الطفلة';
+  return['تقرير '+n+' - '+r.title,''].concat(r.rows.map(x=>x[0]+': '+x[1]),['','حسب النوع:'],r.types.map(x=>x[0]+': '+x[1]+' من '+x[2]),r.subj.length?['','حسب المادة:']:[],r.subj.map(x=>x.n+': '+x.got+' من '+x.due)).join('\n');}
+function vReport(){
+  const r=repData(),kd=D.kid||{};
+  return`<div class="top np"><button class="btn" data-a="tab" data-v="eval">رجوع</button><div class="rw"><button class="btn" data-a="rcopy">نسخ</button><button class="btn pri" data-a="rprint">طباعة / PDF</button></div></div>
+  <div class="card who">${kd.photo?`<img class="av" src="${kd.photo}" alt="">`:''}<div class="mid"><b>تقرير ${esc(kd.name||'الطفلة')}</b><small>${esc(r.title)}</small></div></div>
+  <div class="card"><table>${r.rows.map(x=>`<tr><td>${esc(x[0])}</td><td><b>${esc(x[1])}</b></td></tr>`).join('')}</table></div>
+  ${r.types.length?`<div class="card"><b>حسب النوع</b><table>${r.types.map(x=>`<tr><td>${x[0]}</td><td>${x[1]} من ${x[2]}</td></tr>`).join('')}</table></div>`:''}
+  ${r.subj.length?`<div class="card"><b>حسب المادة</b><table>${r.subj.map(x=>`<tr><td>${esc(x.n)}</td><td>${x.got} من ${x.due}</td><td>${x.pct}%</td></tr>`).join('')}</table></div>`:''}`;}
+function setPhoto(f){
+  const rd=new FileReader();rd.onload=()=>{const im=new Image();im.onload=()=>{const n=256,c=document.createElement('canvas');c.width=c.height=n;const m=Math.min(im.width,im.height);
+    c.getContext('2d').drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,n,n);D.kid.photo=c.toDataURL('image/jpeg',.82);save();render();toast('تم حفظ الصورة.');};
+    im.onerror=()=>toast('تعذّر قراءة الصورة.');im.src=rd.result;};rd.readAsDataURL(f);}
 function vSet(){
   const s=D.set,np='Notification' in window?Notification.permission:'غير مدعوم';
   const o=(a,v)=>a.map(x=>`<option value="${x[0]}" ${String(x[0])===String(v)?'selected':''}>${x[1]}</option>`).join('');
@@ -266,6 +314,9 @@ function vSet(){
   <label class="f">مستوى الصوت<input type="range" min="0.05" max="1" step="0.05" data-s="vol" value="${s.vol}"></label></div>
   <div class="rw"><button class="btn" data-a="test">تجربة الصوت</button><button class="btn" data-a="notif">تفعيل الإشعارات (${esc(np)})</button></div>
   <label class="rw" style="margin-top:8px"><input type="checkbox" data-s="notif" ${s.notif?'checked':''}> إظهار الإشعارات</label></div>
+  <div class="card"><b>ملف الطفلة</b><div class="rw" style="align-items:center">${D.kid.photo?`<img class="av" src="${D.kid.photo}" alt="">`:''}<label class="f">الاسم<input type="text" data-k="name" value="${esc(D.kid.name)}"></label></div>
+  <div class="rw" style="margin:8px 0"><button class="btn" data-a="kidphoto">اختيار صورة</button>${D.kid.photo?'<button class="btn bad" data-a="kidrm">حذف الصورة</button>':''}<input type="file" id="kidf" accept="image/*" hidden></div>
+  <label class="f">التحدي الأسبوعي الافتراضي (نقاط)<input type="number" min="0" step="any" data-s="goal" value="${s.goal||''}" placeholder="مثال: 300"></label><p class="note">الصورة تبقى على هذا الجهاز فقط ولا تُرفع إلى أي مكان. يمكنك تغيير رقم التحدي لأي أسبوع من صفحة التقييم.</p></div>
   <div class="card"><b>موقع الصلاة</b><div class="rw"><label class="f">المدينة (بالإنجليزية أفضل)<input type="text" data-s="city" value="${esc(s.city)}" placeholder="Cairo"></label><label class="f">الدولة<input type="text" data-s="country" value="${esc(s.country)}" placeholder="Egypt"></label>
   <label class="f">طريقة الحساب<select data-s="method">${o(METHODS,s.method)}</select></label></div></div>
   <div class="card"><b>الدرجة الافتراضية للمهمة الجديدة</b><div class="rw">${TYPES.map(t=>`<label class="f">${t}<input type="number" min="0" step="0.5" data-dp="${t}" value="${s.dp[t]}"></label>`).join('')}</div></div>
@@ -273,8 +324,8 @@ function vSet(){
   <p class="note">في الآيفون مستوى الصوت يُضبط من أزرار الجهاز. لتشغيل الإشعارات على الآيفون: ثبّت الصفحة على الشاشة الرئيسية أولاً ثم فعّلها من هنا.</p>`;}
 function render(){
   document.body.classList.toggle('focus',V.focus&&V.tab==='timer');
-  $('#nav').innerHTML=TABS.map(t=>`<button data-a="tab" data-v="${t[0]}" ${V.tab===t[0]?'aria-current="page"':''}><b>${t[1]}</b>${t[2]}</button>`).join('');
-  $('#app').innerHTML=(UNL?'':'<div class="card" id="unl"><button class="btn pri" data-a="unlock" style="width:100%">🔔 اضغطي هنا لتفعيل الصوت والتنبيهات</button></div>')+({today:vToday,timer:vTimer,prayer:vPrayer,eval:vEval,set:vSet})[V.tab]();}
+  $('#nav').innerHTML=TABS.map(t=>`<button data-a="tab" data-v="${t[0]}" ${(V.tab===t[0]||(V.tab==='report'&&t[0]==='eval'))?'aria-current="page"':''}><b>${t[1]}</b>${t[2]}</button>`).join('');
+  $('#app').innerHTML=(UNL?'':'<div class="card" id="unl"><button class="btn pri" data-a="unlock" style="width:100%">🔔 اضغطي هنا لتفعيل الصوت والتنبيهات</button></div>')+({today:vToday,timer:vTimer,prayer:vPrayer,eval:vEval,report:vReport,set:vSet})[V.tab]();}
 function applyTheme(){if(D.set.theme==='auto')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',D.set.theme);}
 /* ===== نافذة التعديل ===== */
 function openM(h){$('#modal').innerHTML='<div class="mb">'+h+'</div>';const f=$('#modal [data-autofocus]');if(f)f.focus();}
@@ -303,7 +354,7 @@ function saveE(){
   save();closeM();render();}
 function mv(id,n){const i=D.tasks.findIndex(x=>x.id===id),j=i+n;if(i<0||j<0||j>=D.tasks.length)return;[D.tasks[i],D.tasks[j]]=[D.tasks[j],D.tasks[i]];save();}
 /* ===== الأحداث ===== */
-function updSum(){const e=$('#sum');if(e)e.outerHTML=sumHtml(V.day);}
+function updSum(){const e=$('#sum');if(e)e.outerHTML=sumHtml(V.day);const w=$('#kid');if(w)w.outerHTML=kidHtml(V.day);}
 function onClick(e){
   const b=e.target.closest('[data-a]');if(!b||b.tagName==='INPUT'||b.tagName==='SELECT')return;unlock();
   const a=b.dataset.a,id=(b.closest('.row')||{dataset:{}}).dataset.t;
@@ -331,6 +382,11 @@ function onClick(e){
     case'test':ring(D.set.sound,Math.min(4,D.set.dur));break;
     case'notif':if('Notification' in window)Notification.requestPermission().then(p=>{toast(p==='granted'?'تم تفعيل الإشعارات.':'لم تُمنح الصلاحية. فعّلها من إعدادات المتصفح.');render();});else toast('المتصفح لا يدعم الإشعارات.');break;
     case'exp':{const bl=new Blob([JSON.stringify(D)],{type:'application/json'}),l=document.createElement('a');l.href=URL.createObjectURL(bl);l.download='planner-'+today()+'.json';l.click();setTimeout(()=>URL.revokeObjectURL(l.href),1000);break;}
+    case'report':V.tab='report';render();window.scrollTo(0,0);break;
+    case'rcopy':if(navigator.clipboard)navigator.clipboard.writeText(reportText()).then(()=>toast('تم نسخ التقرير.'),()=>toast('تعذّر النسخ.'));else toast('تعذّر النسخ.');break;
+    case'rprint':window.print();break;
+    case'kidphoto':$('#kidf').click();break;
+    case'kidrm':D.kid.photo='';save();render();break;
     case'playA':if(AL)ring(AL.kind,AL.secs);break;
     case'unlock':break;
     case'sadd':{const nm=$('#s-name').value.trim(),mx=parseFloat($('#s-max').value);if(!nm){toast('اكتبي اسم المادة.');break;}
@@ -343,21 +399,23 @@ function onClick(e){
 function onChange(e){
   const t=e.target,a=t.dataset.a,s=t.dataset.s,row=t.closest('.row');
   if(t.id==='impf'){const f=t.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d.tasks))throw 0;if(!confirm('سيُستبدل ما في هذا الجهاز بالبيانات المستوردة. متابعة؟'))return;D=Object.assign(D,d);D.set=Object.assign({},D.set,d.set||{});save();applyTheme();render();toast('تم الاستيراد.');}catch(x){toast('ملف غير صالح.');}};r.readAsText(f);return;}
+  if(t.id==='kidf'){if(t.files[0])setPhoto(t.files[0]);t.value='';return;}
+  if(t.dataset.k){D.kid[t.dataset.k]=t.value.trim();save();return;}
+  if(a==='goal'){D.goals[t.dataset.ws]=Math.max(0,parseFloat(t.value)||0);save();render();return;}
   if(a==='tick'){const id=row.dataset.t,k=V.day,tk=dayTasks(k).find(x=>x.id===id),r=rec(k,id);
-    setRec(k,id,{done:t.checked,pts:t.checked?(r.pts!=null?r.pts:tk.max):r.pts});render();}
+    setRec(k,id,{done:t.checked});render();}
   else if(a==='palarm'){D.set.pa[t.dataset.p]=t.checked;save();}
   else if(a==='man'){D.set.man[t.dataset.p]=t.value;save();render();}
   else if(a==='alon'){D.alarms.find(x=>x.id===row.dataset.id).on=t.checked;save();}
   else if(a==='ft'){V.ft=t.value;}
   else if(t.dataset.dp){D.set.dp[t.dataset.dp]=parseFloat(t.value)||0;save();}
   else if(s){let v=t.type==='checkbox'?t.checked:(t.type==='number'||t.type==='range'||s==='ws'||s==='method')?parseFloat(t.value):t.value.trim?t.value.trim():t.value;
-    if(t.type==='number'&&(isNaN(v)||v<1))v=1;D.set[s]=v;save();
+    if(s==='goal'){if(isNaN(v)||v<0)v=0;}else if(t.type==='number'&&(isNaN(v)||v<1))v=1;D.set[s]=v;save();
     if(s==='theme')applyTheme();if(s==='city'||s==='country'||s==='method')fetchPT(true);
     if((s==='study'||s==='brk')&&!T.run){T.left=tDur(T.mode);render();}if(s==='ws'){V.ev.off=0;}}}
 function onInput(e){
   const t=e.target;if(t.dataset.a!=='pts')return;const row=t.closest('.row'),id=row.dataset.t,tk=dayTasks(V.day).find(x=>x.id===id);
-  let v=parseFloat(t.value);if(isNaN(v))v=0;if(v>tk.max){v=tk.max;t.value=v;}if(v<0){v=0;t.value=0;}
-  setRec(V.day,id,{pts:v});updSum();}
+  const v=parseFloat(t.value);setRec(V.day,id,{pts:isNaN(v)?null:v});updSum();}
 /* ===== الإقلاع ===== */
 function boot(){
   load();applyTheme();
